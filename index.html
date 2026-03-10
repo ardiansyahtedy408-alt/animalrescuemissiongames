@@ -1,0 +1,243 @@
+"use client";
+import React, { useState, useEffect } from 'react';
+import { Star, Home, ArrowLeft, Lightbulb, Play, Volume2, Lock, Moon, Sun } from 'lucide-react';
+
+// --- SAFE SPEECH ---
+const speak = (text) => {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang = 'id-ID';
+    msg.rate = 0.9;
+    msg.pitch = 1.2;
+    window.speechSynthesis.speak(msg);
+  }
+};
+
+let audioCtx = null;
+let musicInterval = null;
+
+const initAudio = () => {
+  if (typeof window === 'undefined') return null;
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  return audioCtx;
+};
+
+const startBacksound = () => {
+  if (musicInterval || typeof window === 'undefined') return;
+  const ctx = initAudio();
+  if (!ctx) return;
+
+  const playNote = (freq, startTime, duration) => {
+    if (ctx.state === 'suspended') return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, startTime);
+
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.08, startTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  };
+
+  const melody = [392, 329, 261, 329, 392, 523, 440, 392, 329, 261, 293, 392];
+  let currentNote = 0;
+
+  musicInterval = setInterval(() => {
+    if (ctx.state === 'suspended') return;
+    playNote(melody[currentNote], ctx.currentTime, 1.2);
+    currentNote = (currentNote + 1) % melody.length;
+  }, 450);
+};
+
+const playSound = (type) => {
+  const ctx = initAudio();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') ctx.resume();
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  if (type === 'success') {
+    osc.frequency.setValueAtTime(400, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+    setTimeout(() => speak("Hebat!"), 400);
+  } else if (type === 'wrong') {
+    osc.frequency.setValueAtTime(200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+    setTimeout(() => speak("Coba lagi ya!"), 400);
+  } else {
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  }
+};
+
+// --- WORLD DATA ---
+const WORLDS = {
+  hutan: { id: 'hutan', name: 'Hutan Hijau', icon: '🌳', color: 'bg-green-400' },
+  laut: { id: 'laut', name: 'Laut Biru', icon: '🌊', color: 'bg-blue-400' },
+  gunung: { id: 'gunung', name: 'Gunung Tinggi', icon: '⛰️', color: 'bg-stone-400' },
+  peternakan: { id: 'peternakan', name: 'Peternakan', icon: '🚜', color: 'bg-orange-400' }
+};
+
+const ASSETS = {
+  hutan: { animals: ['🐦', '🐰', '🐒', '🐿️', '🦌'], tools: ['🔨', '✂️', '🍌', '🌳', '💊', '🥜'] },
+  laut: { animals: ['🐟', '🐢', '🐬', '🐙', '🦀'], tools: ['✂️', '🐚', '🥩', '💊', '⚓', '🧭'] },
+  gunung: { animals: ['🐐', '🦅', '🦫', '🦊', '🐏'], tools: ['🔗', '🔨', '⛏️', '🥩', '🌳', '🚑'] },
+  peternakan: { animals: ['🐄', '🐔', '🦆', '🐑', '🐎'], tools: ['🌾', '🌽', '🧹', '🗝️', '🚧', '🥕'] }
+};
+
+const shuffle = (arr) => [...arr].sort(() => Math.random() - 0.5);
+
+const generateLevels = () => {
+  const allLevels = {};
+
+  Object.keys(WORLDS).forEach((worldId) => {
+    const worldLevels = [];
+    const assets = ASSETS[worldId];
+
+    for (let i = 1; i <= 20; i++) {
+      const animal = assets.animals[(i - 1) % assets.animals.length];
+
+      let type = 'tool';
+      if (i % 4 === 0) type = 'maze';
+      if (i % 5 === 0) type = 'memory';
+      if (i === 20) type = 'boss';
+
+      const correctTool = assets.tools[(i - 1) % assets.tools.length];
+      const wrongTools = shuffle(assets.tools.filter((t) => t !== correctTool)).slice(0, 2);
+
+      worldLevels.push({
+        id: i,
+        type,
+        animal,
+        correctTool,
+        options: shuffle([correctTool, ...wrongTools])
+      });
+    }
+
+    allLevels[worldId] = worldLevels;
+  });
+
+  return allLevels;
+};
+
+const LEVELS_DATA = generateLevels();
+
+export default function App() {
+  const [view, setView] = useState('HOME');
+  const [currentWorld, setCurrentWorld] = useState(null);
+  const [currentLevel, setCurrentLevel] = useState(null);
+  const [mistakes, setMistakes] = useState(0);
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    initAudio();
+  }, []);
+
+  const startGame = () => {
+    startBacksound();
+    playSound('pop');
+    setView('WORLD');
+  };
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900 text-white' : 'bg-blue-100'}`}>
+      {view === 'HOME' && (
+        <div className="text-center">
+          <div className="text-8xl mb-4">🦁🚁</div>
+          <h1 className="text-4xl font-bold mb-6">Animal Rescue Mission</h1>
+          <button
+            onClick={startGame}
+            className="bg-green-500 text-white px-8 py-4 rounded-full text-xl"
+          >
+            <Play size={24} /> Main
+          </button>
+        </div>
+      )}
+
+      {view === 'WORLD' && (
+        <div className="grid grid-cols-2 gap-6">
+          {Object.values(WORLDS).map((w) => (
+            <button
+              key={w.id}
+              onClick={() => {
+                setCurrentWorld(w.id);
+                setView('LEVEL');
+              }}
+              className={`${w.color} p-8 rounded-2xl text-white text-2xl`}
+            >
+              {w.icon}
+              <div>{w.name}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'LEVEL' && (
+        <div className="grid grid-cols-5 gap-4">
+          {LEVELS_DATA[currentWorld].map((lvl) => (
+            <button
+              key={lvl.id}
+              onClick={() => {
+                setCurrentLevel(lvl);
+                setView('PLAY');
+              }}
+              className="bg-white p-4 rounded-xl"
+            >
+              {lvl.animal}
+              <div>Lv {lvl.id}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === 'PLAY' && currentLevel && (
+        <div className="text-center">
+          <div className="text-8xl mb-6">{currentLevel.animal}</div>
+          <div className="flex gap-4">
+            {currentLevel.options.map((tool, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (tool === currentLevel.correctTool) {
+                    playSound('success');
+                    setView('LEVEL');
+                  } else {
+                    playSound('wrong');
+                    setMistakes((m) => m + 1);
+                  }
+                }}
+                className="text-4xl bg-white p-4 rounded-xl"
+              >
+                {tool}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
